@@ -17,10 +17,12 @@
     "cheerio": "^1.0.0",
     "dotenv": "^16.4.5",
     "googleapis": "^174.0.1",
+    "nodemailer": "^9.0.5",
     "rss-parser": "^3.13.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",
+    "@types/nodemailer": "^8.0.1",
     "nodemon": "^3.1.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"

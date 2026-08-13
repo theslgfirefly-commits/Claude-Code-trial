@@ -6,17 +6,8 @@ import { fetchEpisodes, findNewEpisodes } from "./rssFeed";
 import { fetchTranscript } from "./scraper";
 import { translateToJapanese } from "./translator";
 import { sendTranscriptEmail } from "./gmail";
+import { slugify } from "./util";
 import { EpisodeMeta, EpisodeWithTranscript } from "./types";
-
-function slugify(title: string, pubDate: string): string {
-  const datePart = pubDate ? new Date(pubDate).toISOString().slice(0, 10) : "unknown-date";
-  const titlePart = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-  return `${datePart}_${titlePart || "episode"}`;
-}
 
 function saveTranscript(episode: EpisodeWithTranscript): string {
   fs.mkdirSync(config.transcriptsDir, { recursive: true });

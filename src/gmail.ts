@@ -1,6 +1,9 @@
+import MailComposer from "nodemailer/lib/mail-composer";
 import { google } from "googleapis";
 import { config } from "./config";
 import { EpisodeWithTranscript } from "./types";
+import { buildPlayerHtml } from "./playerPage";
+import { slugify } from "./util";
 
 function assertGmailConfigured(): void {
   const missing = [
@@ -31,45 +34,17 @@ function getOAuth2Client() {
   return oauth2Client;
 }
 
-/** RFC 2047 "encoded word" so a Japanese subject line survives as an email header. */
-function encodeHeaderUtf8(text: string): string {
-  return `=?UTF-8?B?${Buffer.from(text, "utf-8").toString("base64")}?=`;
-}
-
-function buildRawMessage(params: {
-  to: string;
-  from: string;
-  subject: string;
-  body: string;
-}): string {
-  const { to, from, subject, body } = params;
-
-  const message = [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: ${encodeHeaderUtf8(subject)}`,
-    "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
-    "",
-    Buffer.from(body, "utf-8").toString("base64"),
-  ].join("\r\n");
-
-  // Gmail API expects the raw RFC 2822 message, base64url-encoded.
-  return Buffer.from(message, "utf-8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 function buildEmailBody(episode: EpisodeWithTranscript): string {
   return [
     `番組: WSJ Tech News Briefing`,
     `タイトル: ${episode.title}`,
     `配信日: ${episode.pubDate}`,
     `エピソードページ: ${episode.link}`,
-    `音声URL: ${episode.audioUrl}`,
+    "",
+    "▼ リピート再生するには添付のHTMLファイルを開いてください",
+    "  (スマホの場合、開いた後に共有→「Safariで開く」を選ぶと確実です)",
+    "",
+    `音声URL(直接再生する場合): ${episode.audioUrl}`,
     "",
     "===== 日本語訳 =====",
     episode.translatedTranscript ?? "(翻訳なし)",
@@ -79,7 +54,40 @@ function buildEmailBody(episode: EpisodeWithTranscript): string {
   ].join("\n");
 }
 
-/** Sends the translated transcript for one episode via the Gmail API. */
+/**
+ * Builds the raw base64url RFC 2822 message the Gmail API expects, via
+ * nodemailer's MailComposer (handles MIME multipart/attachments/header
+ * encoding for us instead of hand-rolling it).
+ */
+function buildRawMessage(params: {
+  to: string;
+  from: string;
+  subject: string;
+  text: string;
+  attachments: { filename: string; content: string; contentType: string }[];
+}): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const mail = new MailComposer(params);
+    mail.compile().build((err, message) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      const raw = message
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+      resolve(raw);
+    });
+  });
+}
+
+/**
+ * Sends the translated transcript for one episode via the Gmail API, with a
+ * self-contained `<audio loop>` player page attached so repeat playback
+ * works without needing to reach any server (e.g. from a phone on the go).
+ */
 export async function sendTranscriptEmail(
   episode: EpisodeWithTranscript
 ): Promise<void> {
@@ -88,11 +96,18 @@ export async function sendTranscriptEmail(
   const auth = getOAuth2Client();
   const gmail = google.gmail({ version: "v1", auth });
 
-  const raw = buildRawMessage({
+  const raw = await buildRawMessage({
     to: config.mailTo,
     from: config.gmailSender,
     subject: `[WSJ Tech News Briefing] ${episode.title} (日本語訳)`,
-    body: buildEmailBody(episode),
+    text: buildEmailBody(episode),
+    attachments: [
+      {
+        filename: `${slugify(episode.title, episode.pubDate)}-player.html`,
+        content: buildPlayerHtml(episode),
+        contentType: "text/html; charset=utf-8",
+      },
+    ],
   });
 
   await gmail.users.messages.send({
