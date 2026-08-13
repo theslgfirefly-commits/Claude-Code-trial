@@ -175,10 +175,61 @@ npm run serve
 - 実際のWSJ音声URLでの再生自体は、このサンドボックスの外部ネットワーク制限により確認できていません
   （プレイヤー側のロジックはダミーURLで検証済み）。
 
+## 自動化: GitHub Actionsで常時監視する
+
+自分のPCの電源に関係なく、新着エピソードがあれば自動でメール通知したい場合、
+`.github/workflows/check.yml` により GitHub Actions 上で `npm run check` を**1時間おきに自動実行**する。
+
+### やっていること
+
+- 毎時0分に `npm run check` を実行（`schedule: cron`）。加えて Actions タブから手動実行もできる
+  （`workflow_dispatch`）。
+- GitHub Actionsのランナーは実行のたびにまっさらな状態から始まるため、`data/state.json`
+  （前回どこまで確認したかの記録）が消えてしまう。そこでチェック実行後に差分があれば
+  `data/state.json` だけをワークフロー自身がコミット・push して次回に引き継ぐ
+  （通常の開発では `.gitignore` されているファイルだが、CI実行時だけ `git add -f` で強制コミットする）。
+- `npm run check` は、新着エピソードの取得・翻訳・メール送信のどこか1つでも失敗すると
+  終了コード1で終わるようにしてある（`src/index.ts`）。そのため翻訳やメール送信に問題があれば
+  Actionsの実行が「失敗」として記録され、GitHubの通知設定次第でその旨を検知できる。
+
+### セットアップ（初回のみ、GitHubのWeb画面で行う）
+
+1. リポジトリの **Settings → Secrets and variables → Actions → New repository secret** で、
+   `.env` に設定しているのと同じ内容を以下の名前でSecretsとして登録する。
+
+   | Secret名 | 内容 |
+   |---|---|
+   | `DEEPL_API_KEY` | DeepLのAPIキー |
+   | `GMAIL_CLIENT_ID` | GoogleのOAuthクライアントID |
+   | `GMAIL_CLIENT_SECRET` | 同シークレット |
+   | `GMAIL_REFRESH_TOKEN` | `npm run gmail:auth` で取得したトークン |
+   | `GMAIL_SENDER` | 送信元Gmailアドレス |
+   | `MAIL_TO` | 送信先メールアドレス |
+
+   `RSS_FEED_URL` / `WSJ_SHOW_PAGE_URL` / `DEEPL_API_URL` / `GMAIL_REDIRECT_URI` は
+   `.env.example` の既定値で問題なければSecrets登録は不要（未設定なら自動で既定値が使われる）。
+
+2. **Settings → Actions → General → Workflow permissions** で
+   **「Read and write permissions」** を選んで保存する（`data/state.json` をコミットし直すために必要）。
+
+3. **Actions** タブ → 左側の「WSJ Tech News Briefing check」→ 右上の **Run workflow** で、
+   スケジュールを待たずに一度手動実行して動作確認する。実行ログはActionsタブから確認できる。
+
+### 既知の注意点
+
+- GitHub Actionsの `schedule` は**デフォルトブランチ**上のワークフローファイルでのみ動く。
+  このリポジトリは現在 `claude/wsj-tech-news-app-yhdng6` がデフォルトブランチのため追加設定なしで動くが、
+  今後別ブランチを既定にする場合はワークフローもそちらに存在させる必要がある。
+- 翻訳やメール送信が失敗した回のエピソードも「確認済み」として記録されるため、**自動リトライはしない**。
+  Actionsの実行が失敗（赤いバツ）していたら、原因を直してから手動 `Run workflow` で再実行する。
+- プライベートリポジトリではActionsの実行時間に無料枠（個人アカウントで月2,000分）があるが、
+  `npm ci` のキャッシュを効かせたうえで1時間おき実行なら十分収まる想定。頻度を上げたい場合は
+  `cron` の値（例: `*/30 * * * *` で30分おき）を調整する。
+
 ## 今後の予定
 
-現時点でStep 1〜3はすべて実装済み。今後の改善候補（未着手）:
+現時点でStep 1〜3、および常時自動化まですべて実装済み。今後の改善候補（未着手）:
 
 - WSJページの実DOM構造に合わせた `src/scraper.ts` のセレクタ調整（実ネットワーク環境での確認が必要）。
-- `npm run watch` の定期実行を systemd/cron 等の外部スケジューラで常駐化。
+- 翻訳・メール送信が失敗したエピソードの自動リトライ。
 - プレイヤーページでの複数エピソード再生履歴・検索機能など。

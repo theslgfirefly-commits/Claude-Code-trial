@@ -19,7 +19,8 @@ function saveTranscript(episode: EpisodeWithTranscript): string {
   return filePath;
 }
 
-async function processEpisode(episode: EpisodeMeta): Promise<void> {
+/** Returns true only if transcript fetch + translation + email all succeeded. */
+async function processEpisode(episode: EpisodeMeta): Promise<boolean> {
   console.log(`[new episode] ${episode.title} (${episode.pubDate})`);
   console.log(`  page: ${episode.link}`);
   console.log(`  audio: ${episode.audioUrl}`);
@@ -36,7 +37,7 @@ async function processEpisode(episode: EpisodeMeta): Promise<void> {
     console.log(`  transcript fetched (${transcript.length} chars)`);
   } catch (err) {
     console.error(`  failed to fetch transcript: ${(err as Error).message}`);
-    return;
+    return false;
   }
 
   try {
@@ -52,7 +53,7 @@ async function processEpisode(episode: EpisodeMeta): Promise<void> {
     console.log(`  translated (${translatedTranscript.length} chars)`);
   } catch (err) {
     console.error(`  failed to translate transcript: ${(err as Error).message}`);
-    return;
+    return false;
   }
 
   try {
@@ -60,12 +61,15 @@ async function processEpisode(episode: EpisodeMeta): Promise<void> {
     withTranscript = { ...withTranscript, emailSentAt: new Date().toISOString() };
     saveTranscript(withTranscript);
     console.log(`  email sent to ${config.mailTo}`);
+    return true;
   } catch (err) {
     console.error(`  failed to send email: ${(err as Error).message}`);
+    return false;
   }
 }
 
-export async function checkOnce(): Promise<void> {
+/** Returns true only if the feed was reachable and every new episode was fully processed. */
+export async function checkOnce(): Promise<boolean> {
   console.log(`[${new Date().toISOString()}] checking feed: ${config.rssFeedUrl}`);
 
   const episodes = await fetchEpisodes();
@@ -74,14 +78,20 @@ export async function checkOnce(): Promise<void> {
   const state = loadState();
   const newEpisodes = findNewEpisodes(episodes, state.lastEpisodeGuid);
 
+  let allOk = true;
+
   if (newEpisodes.length === 0) {
     console.log("  no new episodes");
   } else {
     console.log(`  ${newEpisodes.length} new episode(s) found`);
     for (const episode of newEpisodes) {
-      await processEpisode(episode);
+      const ok = await processEpisode(episode);
+      if (!ok) allOk = false;
       // Persist progress after each episode so a crash mid-batch doesn't
-      // re-process already-handled episodes on the next run.
+      // re-process already-handled episodes on the next run. Note: this
+      // marks the episode as "seen" even on partial failure (e.g. email
+      // send failed), so a failed run does not automatically retry — check
+      // the run's exit code/logs and re-run manually if needed.
       saveState({
         lastEpisodeGuid: episode.guid,
         lastCheckedAt: new Date().toISOString(),
@@ -93,13 +103,15 @@ export async function checkOnce(): Promise<void> {
     lastEpisodeGuid: episodes[0]?.guid ?? state.lastEpisodeGuid,
     lastCheckedAt: new Date().toISOString(),
   });
+
+  return allOk;
 }
 
 async function main(): Promise<void> {
   const watch = process.argv.includes("--watch");
 
   const ok = await checkOnce().then(
-    () => true,
+    (result) => result,
     (err) => {
       console.error("check failed:", err);
       return false;

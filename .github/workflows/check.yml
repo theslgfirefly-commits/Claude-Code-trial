@@ -1,0 +1,66 @@
+name: WSJ Tech News Briefing check
+
+"on":
+  schedule:
+    # Hourly. GitHub only fires scheduled workflows from the default branch,
+    # and timing can slip a few minutes under load — that's fine for this.
+    - cron: "0 * * * *"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write # needed to commit the updated last-seen state back
+
+concurrency:
+  group: wsj-tnb-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run check (fetch, translate, email)
+        env:
+          RSS_FEED_URL: ${{ secrets.RSS_FEED_URL }}
+          WSJ_SHOW_PAGE_URL: ${{ secrets.WSJ_SHOW_PAGE_URL }}
+          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
+          DEEPL_API_URL: ${{ secrets.DEEPL_API_URL }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          GMAIL_REDIRECT_URI: ${{ secrets.GMAIL_REDIRECT_URI }}
+          GMAIL_SENDER: ${{ secrets.GMAIL_SENDER }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: npm run check
+
+      - name: Persist last-seen episode state
+        if: always()
+        run: |
+          # data/state.json is gitignored for local dev, but CI needs it to
+          # survive between runs since each run starts from a clean checkout.
+          # `git status` hides gitignored files by default, so `git add -f`
+          # + `git diff --cached` (rather than `git status`) is what
+          # correctly detects a genuinely new/changed file here.
+          if [ ! -f data/state.json ]; then
+            echo "no data/state.json produced this run; nothing to persist"
+            exit 0
+          fi
+
+          git add -f data/state.json
+
+          if git diff --cached --quiet -- data/state.json; then
+            echo "state.json unchanged, nothing to commit"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore: update last-seen episode state [skip ci]"
+            git push
+          fi
