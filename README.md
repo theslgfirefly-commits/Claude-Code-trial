@@ -3,7 +3,7 @@
 WSJ Podcast「Tech News Briefing」の新着エピソードを検知し、トランスクリプトを翻訳してメール通知、
 さらにリピート再生できる音声プレイヤーを提供するアプリケーション。
 
-段階的に実装します。現在完了しているのは **Step 1・Step 2** です。
+段階的に実装しました。現在 **Step 1〜3すべて** が完了しています。
 
 ## 技術スタック
 
@@ -13,7 +13,8 @@ WSJ Podcast「Tech News Briefing」の新着エピソードを検知し、トラ
 - HTMLスクレイピング: cheerio
 - 翻訳: DeepL API
 - メール送信: Gmail API (googleapis, OAuth2)
-- フロントエンド (Step 3で追加予定): HTML / Vanilla JS
+- Webサーバー: Node.js標準 `http` モジュール(軽量API + 静的配信)
+- フロントエンド: HTML / Vanilla JS (`<audio loop>`)
 
 ## セットアップ
 
@@ -120,6 +121,50 @@ Step 2（翻訳・メール送信）まで自動的に走る。
 - `refresh_token` はアクセストークンを無期限に再発行できる機密情報です。`.env` は `.gitignore` 済みですが、
   取り扱いに注意してください。
 
+## Step 3: リピート再生可能な音声プレイヤー
+
+### やっていること
+
+1. `src/server.ts` — フレームワークなしの軽量サーバー(Node標準の`http`のみ使用)。
+   - `GET /api/episodes` — `data/transcripts/*.json`（Step 1/2で保存済みのエピソード）を読み込み、
+     `audioUrl`を含むものだけを新しい順に並べてJSONで返す。
+   - それ以外のパスは `public/` 配下を静的配信する。
+2. `public/index.html` + `public/app.js` — Vanilla JSのシンプルなプレイヤー画面。
+   - `/api/episodes` を取得してエピソードのドロップダウンを作成し、選択したエピソードの
+     `audioUrl` を `<audio>` タグの `src` にセットする。
+   - `<audio controls loop>` により、HTML5標準機能でのリピート自動再生に対応
+     （チェックボックスでON/OFF切り替えも可能）。
+   - `data/transcripts/` にまだエピソードが無い場合や、任意の音声を試したい場合のために、
+     URLを直接入力して再生できる欄も用意。
+
+### 実行方法
+
+```bash
+npm run serve
+# http://localhost:3000 をブラウザで開く
+```
+
+`PORT` 環境変数でポート変更可（既定 3000）。事前に `npm run check` を1回実行し、
+`data/transcripts/` にエピソードJSONを作っておくと一覧に表示される。
+
+### 動作確認
+
+- ダミーのエピソードJSONを `data/transcripts/` に置いてサーバーを起動し、Playwright(ヘッドレスChromium)
+  でページを操作して確認済み:
+  - `/api/episodes` がエピソード一覧を正しく返す。
+  - ページ読み込み時に最新エピソードが自動選択され、`<audio>` の `src` に `audioUrl` が設定され、
+    `loop` 属性が `true` になっていることを確認。
+  - 「リピート再生」チェックボックスのON/OFFで `audio.loop` が切り替わることを確認。
+  - 「音声URLを直接指定して再生」から任意のURLを読み込めることを確認。
+  - スクリーンショットで見た目も確認（自動再生はブラウザのポリシーでブロックされるため、
+    その場合は「再生ボタンを押してください」という案内を表示するようにしている）。
+- 実際のWSJ音声URLでの再生自体は、このサンドボックスの外部ネットワーク制限により確認できていません
+  （プレイヤー側のロジックはダミーURLで検証済み）。
+
 ## 今後の予定
 
-- **Step 3**: `audioUrl` を使い、`<audio loop>` によるリピート再生Webページ（`public/`配下）を作成。
+現時点でStep 1〜3はすべて実装済み。今後の改善候補（未着手）:
+
+- WSJページの実DOM構造に合わせた `src/scraper.ts` のセレクタ調整（実ネットワーク環境での確認が必要）。
+- `npm run watch` の定期実行を systemd/cron 等の外部スケジューラで常駐化。
+- プレイヤーページでの複数エピソード再生履歴・検索機能など。

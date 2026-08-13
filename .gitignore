@@ -2,6 +2,6 @@ node_modules/
 dist/
 .env
 data/state.json
-data/transcripts/*.txt
+data/transcripts/*.json
 !data/transcripts/.gitkeep
 *.log
