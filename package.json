@@ -10,7 +10,8 @@
     "watch": "ts-node src/index.ts --watch",
     "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
     "gmail:auth": "ts-node src/getGmailRefreshToken.ts",
-    "serve": "ts-node src/server.ts"
+    "serve": "ts-node src/server.ts",
+    "inspect": "ts-node src/inspectFeed.ts"
   },
   "dependencies": {
     "axios": "^1.7.7",
