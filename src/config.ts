@@ -34,7 +34,7 @@ export const config = {
 
   // --- Step 2: Gemini API translation ---
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
-  geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.5-pro",
   geminiApiUrl:
     process.env.GEMINI_API_URL ??
     "https://generativelanguage.googleapis.com/v1beta/models",
