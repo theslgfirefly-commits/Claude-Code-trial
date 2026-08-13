@@ -107,21 +107,30 @@ export async function checkOnce(): Promise<void> {
 async function main(): Promise<void> {
   const watch = process.argv.includes("--watch");
 
-  await checkOnce().catch((err) => {
-    console.error("check failed:", err);
-  });
+  const ok = await checkOnce().then(
+    () => true,
+    (err) => {
+      console.error("check failed:", err);
+      return false;
+    }
+  );
 
-  if (watch) {
-    const intervalMs = config.pollIntervalMinutes * 60 * 1000;
-    console.log(
-      `watching for new episodes every ${config.pollIntervalMinutes} minute(s)...`
-    );
-    setInterval(() => {
-      checkOnce().catch((err) => {
-        console.error("check failed:", err);
-      });
-    }, intervalMs);
+  if (!watch) {
+    // rss-parser/axios can leave sockets/handles open on certain failures
+    // (e.g. a proxy rejecting the CONNECT), which would otherwise keep the
+    // process alive indefinitely instead of returning to the shell.
+    process.exit(ok ? 0 : 1);
   }
+
+  const intervalMs = config.pollIntervalMinutes * 60 * 1000;
+  console.log(
+    `watching for new episodes every ${config.pollIntervalMinutes} minute(s)...`
+  );
+  setInterval(() => {
+    checkOnce().catch((err) => {
+      console.error("check failed:", err);
+    });
+  }, intervalMs);
 }
 
 if (require.main === module) {
