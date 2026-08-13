@@ -31,8 +31,9 @@ jobs:
         env:
           RSS_FEED_URL: ${{ secrets.RSS_FEED_URL }}
           WSJ_SHOW_PAGE_URL: ${{ secrets.WSJ_SHOW_PAGE_URL }}
-          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
-          DEEPL_API_URL: ${{ secrets.DEEPL_API_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          GEMINI_API_URL: ${{ secrets.GEMINI_API_URL }}
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}

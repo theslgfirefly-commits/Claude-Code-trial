@@ -11,7 +11,7 @@ WSJ Podcast「Tech News Briefing」の新着エピソードを検知し、トラ
 - HTTPクライアント: axios
 - RSS解析: rss-parser
 - HTMLスクレイピング: cheerio
-- 翻訳: DeepL API
+- 翻訳: Gemini API (Google AI Studio)
 - メール送信: Gmail API (googleapis, OAuth2)
 - Webサーバー: Node.js標準 `http` モジュール(軽量API + 静的配信)
 - フロントエンド: HTML / Vanilla JS (`<audio loop>`)
@@ -73,10 +73,9 @@ npm run dev      # ソース変更を監視しつつ1回チェック（開発用
 
 ### やっていること
 
-1. `src/translator.ts` — DeepL API (`v2/translate`) を使い、英語トランスクリプトを日本語に翻訳する。
-   DeepLの1リクエストあたりの上限に収まるよう、段落単位で分割・バッチ化してから送信し、
-   結果を元の順序で結合する（`DEEPL_API_KEY` が `:fx` サフィックス付きならFreeエンドポイント、
-   それ以外はProエンドポイントを自動選択。`DEEPL_API_URL` で上書き可）。
+1. `src/translator.ts` — Gemini API (`generateContent`) を使い、英語トランスクリプトを日本語に翻訳する。
+   長いトランスクリプトは段落単位で分割し、チャンクごとに翻訳リクエストを送って結果を元の順序で結合する。
+   モデル名は `GEMINI_MODEL`（既定: `gemini-2.0-flash`）で切り替え可能。
 2. `src/gmail.ts` — Gmail API (`users.messages.send`) を使い、翻訳結果（+原文）を指定アドレスへ送信する。
    OAuth2の `refresh_token` を使ってアクセストークンを都度取得するため、APIキーではなくOAuthクライアント
    (Desktop app) が必要。件名の日本語はRFC 2047 (`=?UTF-8?B?...?=`) でエンコードして送信する。
@@ -90,9 +89,11 @@ npm run dev      # ソース変更を監視しつつ1回チェック（開発用
 
 ### セットアップ
 
-**DeepL API**
-1. https://www.deepl.com/pro-api で無料/有料プランのAPIキーを取得。
-2. `.env` の `DEEPL_API_KEY` に設定（Freeキーは末尾が `:fx`）。
+**Gemini API**
+1. [Google AI Studio](https://aistudio.google.com/apikey) を開き、Googleアカウントでログインして
+   「Create API key」でAPIキーを発行する（無料枠はGoogleアカウントのみで発行でき、DeepLと違い
+   住所・請求先情報の登録は不要）。
+2. `.env` の `GEMINI_API_KEY` に貼り付ける。
 
 **Gmail API**
 1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成し、「Gmail API」を有効化。
@@ -114,9 +115,12 @@ Step 2（翻訳・メール送信）まで自動的に走る。
 
 ### 既知の注意点
 
-- このサンドボックス環境は `deepl.com` や `googleapis.com` を含む外部ドメインへの送信も制限されているため、
-  DeepL翻訳・Gmail送信の実通信はこの環境からは検証できていません。型チェック (`npx tsc --noEmit`) は通過済みです。
-  実際のAPIキー・OAuth認可情報を設定のうえ、通常のネットワーク環境で動作確認してください。
+- このサンドボックス環境は `generativelanguage.googleapis.com` や `googleapis.com` を含む外部ドメインへの
+  送信も制限されているため、Gemini翻訳・Gmail送信の実通信はこの環境からは検証できていません。
+  型チェック (`npx tsc --noEmit`) は通過済みです。実際のAPIキー・OAuth認可情報を設定のうえ、
+  通常のネットワーク環境で動作確認してください。
+- Gemini APIの無料枠にはレート制限（1分あたりのリクエスト数上限など）がある。1エピソード分の翻訳は
+  通常1〜2リクエストに収まる想定だが、上限に達した場合は `src/translator.ts` のエラーメッセージで分かる。
 - Gmail APIの `gmail.send` スコープは送信専用（受信トレイの閲覧はできない）ため、比較的安全な権限です。
 - `refresh_token` はアクセストークンを無期限に再発行できる機密情報です。`.env` は `.gitignore` 済みですが、
   取り扱いに注意してください。
@@ -199,14 +203,14 @@ npm run serve
 
    | Secret名 | 内容 |
    |---|---|
-   | `DEEPL_API_KEY` | DeepLのAPIキー |
+   | `GEMINI_API_KEY` | Google AI StudioのAPIキー |
    | `GMAIL_CLIENT_ID` | GoogleのOAuthクライアントID |
    | `GMAIL_CLIENT_SECRET` | 同シークレット |
    | `GMAIL_REFRESH_TOKEN` | `npm run gmail:auth` で取得したトークン |
    | `GMAIL_SENDER` | 送信元Gmailアドレス |
    | `MAIL_TO` | 送信先メールアドレス |
 
-   `RSS_FEED_URL` / `WSJ_SHOW_PAGE_URL` / `DEEPL_API_URL` / `GMAIL_REDIRECT_URI` は
+   `RSS_FEED_URL` / `WSJ_SHOW_PAGE_URL` / `GEMINI_MODEL` / `GEMINI_API_URL` / `GMAIL_REDIRECT_URI` は
    `.env.example` の既定値で問題なければSecrets登録は不要（未設定なら自動で既定値が使われる）。
 
 2. **Settings → Actions → General → Workflow permissions** で

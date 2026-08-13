@@ -1,20 +1,23 @@
 import axios from "axios";
 import { config } from "./config";
 
-// DeepL request limits (kept conservative vs. the documented ~128KB / 50
-// texts per request so a single call never risks a 413).
-const MAX_CHUNK_CHARS = 4500;
-const MAX_TEXTS_PER_REQUEST = 50;
-const MAX_REQUEST_CHARS = 25000;
+// Gemini handles far more context per request than DeepL's free-tier text
+// limits did, but transcripts are still chunked defensively so one huge
+// request can't blow past the model's output limit or a single timeout.
+const MAX_CHUNK_CHARS = 12000;
 
-interface DeepLTranslateResponse {
-  translations: Array<{ detected_source_language: string; text: string }>;
+interface GeminiGenerateContentResponse {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    finishReason?: string;
+  }>;
 }
 
-function assertDeepLConfigured(): void {
-  if (!config.deeplApiKey) {
+function assertGeminiConfigured(): void {
+  if (!config.geminiApiKey) {
     throw new Error(
-      "DEEPL_API_KEY is not set. Add it to .env (see .env.example)."
+      "GEMINI_API_KEY is not set. Add it to .env (see .env.example) — " +
+        "get a free key at https://aistudio.google.com/apikey (no billing/address required)."
     );
   }
 }
@@ -49,65 +52,63 @@ function splitIntoChunks(text: string): string[] {
   return chunks;
 }
 
-/** Groups chunks into request batches under the size/count limits. */
-function batchChunks(chunks: string[]): string[][] {
-  const batches: string[][] = [];
-  let batch: string[] = [];
-  let batchChars = 0;
+function buildPrompt(text: string): string {
+  return (
+    "You are a professional English-to-Japanese translator. Translate the " +
+    "following podcast transcript excerpt into natural, fluent Japanese. " +
+    "Preserve the original meaning and paragraph breaks. Output ONLY the " +
+    "Japanese translation — no preface, no notes, no quotation marks " +
+    "around it.\n\n---\n\n" +
+    text
+  );
+}
 
-  for (const chunk of chunks) {
-    const wouldOverflow =
-      batch.length >= MAX_TEXTS_PER_REQUEST ||
-      batchChars + chunk.length > MAX_REQUEST_CHARS;
+async function translateChunk(text: string): Promise<string> {
+  const url = `${config.geminiApiUrl}/${config.geminiModel}:generateContent?key=${config.geminiApiKey}`;
 
-    if (wouldOverflow && batch.length > 0) {
-      batches.push(batch);
-      batch = [];
-      batchChars = 0;
+  const res = await axios.post<GeminiGenerateContentResponse>(
+    url,
+    {
+      contents: [{ parts: [{ text: buildPrompt(text) }] }],
+      generationConfig: { temperature: 0.2 },
+    },
+    {
+      timeout: config.httpTimeoutMs,
+      headers: { "Content-Type": "application/json" },
     }
+  );
 
-    batch.push(chunk);
-    batchChars += chunk.length;
+  const candidate = res.data.candidates?.[0];
+  const translated = candidate?.content?.parts
+    ?.map((p) => p.text ?? "")
+    .join("")
+    .trim();
+
+  if (!translated) {
+    throw new Error(
+      `Gemini returned no translation (finishReason: ${
+        candidate?.finishReason ?? "unknown"
+      })`
+    );
   }
 
-  if (batch.length > 0) batches.push(batch);
-  return batches;
+  return translated;
 }
 
 /**
- * Translates English text to Japanese via the DeepL API, chunking long
+ * Translates English text to Japanese via the Gemini API, chunking long
  * transcripts across multiple requests as needed. Chunk order is preserved
  * so the returned string reads the same as the source.
  */
 export async function translateToJapanese(text: string): Promise<string> {
-  assertDeepLConfigured();
+  assertGeminiConfigured();
 
   const chunks = splitIntoChunks(text);
   if (chunks.length === 0) return "";
 
-  const batches = batchChunks(chunks);
   const translated: string[] = [];
-
-  for (const batch of batches) {
-    const params = new URLSearchParams();
-    for (const chunk of batch) params.append("text", chunk);
-    params.append("source_lang", "EN");
-    params.append("target_lang", "JA");
-    params.append("preserve_formatting", "1");
-
-    const res = await axios.post<DeepLTranslateResponse>(
-      config.deeplApiUrl,
-      params,
-      {
-        timeout: config.httpTimeoutMs,
-        headers: {
-          Authorization: `DeepL-Auth-Key ${config.deeplApiKey}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      }
-    );
-
-    translated.push(...res.data.translations.map((t) => t.text));
+  for (const chunk of chunks) {
+    translated.push(await translateChunk(chunk));
   }
 
   return translated.join("\n\n");

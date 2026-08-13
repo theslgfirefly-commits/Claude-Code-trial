@@ -32,13 +32,12 @@ export const config = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
   pollIntervalMinutes: Number(process.env.POLL_INTERVAL_MINUTES ?? 30),
 
-  // --- Step 2: DeepL translation ---
-  deeplApiKey: process.env.DEEPL_API_KEY ?? "",
-  deeplApiUrl:
-    process.env.DEEPL_API_URL ??
-    ((process.env.DEEPL_API_KEY ?? "").endsWith(":fx")
-      ? "https://api-free.deepl.com/v2/translate"
-      : "https://api.deepl.com/v2/translate"),
+  // --- Step 2: Gemini API translation ---
+  geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+  geminiApiUrl:
+    process.env.GEMINI_API_URL ??
+    "https://generativelanguage.googleapis.com/v1beta/models",
 
   // --- Step 2: Gmail API (OAuth2 "installed app" flow) ---
   gmailClientId: process.env.GMAIL_CLIENT_ID ?? "",
