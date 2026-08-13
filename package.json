@@ -11,15 +11,18 @@
     "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
     "gmail:auth": "ts-node src/getGmailRefreshToken.ts",
     "serve": "ts-node src/server.ts",
-    "inspect": "ts-node src/inspectFeed.ts"
+    "inspect": "ts-node src/inspectFeed.ts",
+    "inspect:page": "ts-node src/inspectPage.ts"
   },
   "dependencies": {
     "axios": "^1.7.7",
+    "axios-cookiejar-support": "^7.0.0",
     "cheerio": "^1.0.0",
     "dotenv": "^16.4.5",
     "googleapis": "^174.0.1",
     "nodemailer": "^9.0.5",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "tough-cookie": "^6.0.2"
   },
   "devDependencies": {
     "@types/node": "^20.14.9",

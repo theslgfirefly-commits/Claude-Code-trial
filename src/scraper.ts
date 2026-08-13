@@ -1,14 +1,13 @@
-import axios from "axios";
 import * as cheerio from "cheerio";
-import { config } from "./config";
+import { fetchLikeBrowser } from "./httpClient";
 
 /**
  * CSS selectors tried (in order) to locate the transcript container on a
- * WSJ episode page. wsj.com is a JS-heavy, paywalled site, so the exact DOM
- * could not be inspected from this sandbox (outbound network access to
- * wsj.com is blocked here). Once you can load a real episode page in a
- * browser, open devtools on the "Read transcript" section and add/adjust
- * selectors here as needed.
+ * WSJ episode page. wsj.com is a JS-heavy site, so the exact DOM could not
+ * be inspected from this sandbox (outbound network access to wsj.com is
+ * blocked here). Once you can load a real episode page in a browser, open
+ * devtools on the "Read transcript" section and add/adjust selectors here
+ * as needed.
  */
 const TRANSCRIPT_CONTAINER_SELECTORS = [
   '[data-testid*="transcript" i]',
@@ -21,17 +20,22 @@ const TRANSCRIPT_HEADING_TEXT = /read transcript|full transcript|transcript/i;
 
 /**
  * Fetches an episode page and extracts the transcript text.
- * Throws an Error (with an explanatory message) if no transcript could be
- * located, rather than silently returning an empty string.
+ * Throws an Error (with an explanatory message) if the page couldn't be
+ * fetched or no transcript could be located, rather than silently
+ * returning an empty string.
  */
 export async function fetchTranscript(episodeUrl: string): Promise<string> {
-  const { data: html } = await axios.get<string>(episodeUrl, {
-    timeout: config.httpTimeoutMs,
-    headers: {
-      "User-Agent": config.userAgent,
-      Accept: "text/html,application/xhtml+xml",
-    },
-  });
+  const { status, data: html } = await fetchLikeBrowser(episodeUrl);
+
+  if (status >= 400) {
+    throw new Error(
+      `Fetching ${episodeUrl} returned HTTP ${status} even with browser-like ` +
+        "headers/cookies. This usually means the site's bot-detection is " +
+        "blocking the request — a real (or headless) browser session may be " +
+        "required instead of a plain HTTP fetch. Try `npm run inspect:page " +
+        `${episodeUrl}\` to see the raw response.`
+    );
+  }
 
   const $ = cheerio.load(html);
 
@@ -42,12 +46,13 @@ export async function fetchTranscript(episodeUrl: string): Promise<string> {
   if (fromHeading) return fromHeading;
 
   throw new Error(
-    `Could not locate a transcript on ${episodeUrl}. The page may require ` +
-      "a WSJ subscription/login, render the transcript via client-side " +
-      "JavaScript (needing a headless browser instead of a static fetch), " +
-      "or use different markup than TRANSCRIPT_CONTAINER_SELECTORS in " +
-      "src/scraper.ts expects. Inspect the live page and update the " +
-      "selectors there."
+    `Fetched ${episodeUrl} (HTTP ${status}) but could not locate a ` +
+      "transcript in it. The page may render the transcript via " +
+      "client-side JavaScript (needing a headless browser instead of a " +
+      "static fetch), or use different markup than " +
+      "TRANSCRIPT_CONTAINER_SELECTORS in src/scraper.ts expects. Run " +
+      `\`npm run inspect:page ${episodeUrl}\` to inspect the raw HTML and ` +
+      "update the selectors there."
   );
 }
 
@@ -94,7 +99,7 @@ function extractFromHeading($: cheerio.CheerioAPI): string | null {
 
 function cleanText(raw: string): string {
   return raw
-    .replace(/ /g, " ")
+    .replace(/ /g, " ")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
