@@ -31,4 +31,21 @@ export const config = {
     process.env.USER_AGENT ??
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
   pollIntervalMinutes: Number(process.env.POLL_INTERVAL_MINUTES ?? 30),
+
+  // --- Step 2: DeepL translation ---
+  deeplApiKey: process.env.DEEPL_API_KEY ?? "",
+  deeplApiUrl:
+    process.env.DEEPL_API_URL ??
+    ((process.env.DEEPL_API_KEY ?? "").endsWith(":fx")
+      ? "https://api-free.deepl.com/v2/translate"
+      : "https://api.deepl.com/v2/translate"),
+
+  // --- Step 2: Gmail API (OAuth2 "installed app" flow) ---
+  gmailClientId: process.env.GMAIL_CLIENT_ID ?? "",
+  gmailClientSecret: process.env.GMAIL_CLIENT_SECRET ?? "",
+  gmailRefreshToken: process.env.GMAIL_REFRESH_TOKEN ?? "",
+  gmailRedirectUri:
+    process.env.GMAIL_REDIRECT_URI ?? "http://localhost:53682/oauth2callback",
+  gmailSender: process.env.GMAIL_SENDER ?? "",
+  mailTo: process.env.MAIL_TO ?? "",
 };

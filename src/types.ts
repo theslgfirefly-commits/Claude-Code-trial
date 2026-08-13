@@ -13,6 +13,9 @@ export interface EpisodeMeta {
 export interface EpisodeWithTranscript extends EpisodeMeta {
   transcript: string;
   transcriptFetchedAt: string;
+  translatedTranscript?: string;
+  translatedAt?: string;
+  emailSentAt?: string;
 }
 
 export interface AppState {

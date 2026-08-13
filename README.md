@@ -3,7 +3,7 @@
 WSJ Podcast「Tech News Briefing」の新着エピソードを検知し、トランスクリプトを翻訳してメール通知、
 さらにリピート再生できる音声プレイヤーを提供するアプリケーション。
 
-段階的に実装します。現在完了しているのは **Step 1** です。
+段階的に実装します。現在完了しているのは **Step 1・Step 2** です。
 
 ## 技術スタック
 
@@ -11,6 +11,8 @@ WSJ Podcast「Tech News Briefing」の新着エピソードを検知し、トラ
 - HTTPクライアント: axios
 - RSS解析: rss-parser
 - HTMLスクレイピング: cheerio
+- 翻訳: DeepL API
+- メール送信: Gmail API (googleapis, OAuth2)
 - フロントエンド (Step 3で追加予定): HTML / Vanilla JS
 
 ## セットアップ
@@ -66,8 +68,58 @@ npm run dev      # ソース変更を監視しつつ1回チェック（開発用
 - `npm run check` を実行し、RSS取得 → エラーハンドリング → `data/state.json` 未作成時のデフォルト動作までは
   ロジックとして確認済み（実際のネットワーク到達性はこのサンドボックスでは検証不可、上記参照）。
 
+## Step 2: 翻訳とGmail通知
+
+### やっていること
+
+1. `src/translator.ts` — DeepL API (`v2/translate`) を使い、英語トランスクリプトを日本語に翻訳する。
+   DeepLの1リクエストあたりの上限に収まるよう、段落単位で分割・バッチ化してから送信し、
+   結果を元の順序で結合する（`DEEPL_API_KEY` が `:fx` サフィックス付きならFreeエンドポイント、
+   それ以外はProエンドポイントを自動選択。`DEEPL_API_URL` で上書き可）。
+2. `src/gmail.ts` — Gmail API (`users.messages.send`) を使い、翻訳結果（+原文）を指定アドレスへ送信する。
+   OAuth2の `refresh_token` を使ってアクセストークンを都度取得するため、APIキーではなくOAuthクライアント
+   (Desktop app) が必要。件名の日本語はRFC 2047 (`=?UTF-8?B?...?=`) でエンコードして送信する。
+3. `src/getGmailRefreshToken.ts` — 初回のみ実行するセットアップ用スクリプト。ブラウザでOAuth同意画面を
+   開いてもらい、ローカルにHTTPサーバーを一時起動してリダイレクトの認可コードを受け取り、
+   `refresh_token` を発行・表示する。
+4. `src/index.ts` の `processEpisode` に翻訳 → メール送信を追加。各ステップの結果は
+   `data/transcripts/*.json` に随時追記保存され（`translatedTranscript` / `emailSentAt` など）、
+   どこまで成功したかを後から確認できる。翻訳やメール送信が失敗しても、取得済みのトランスクリプトは
+   保存済みなので次回以降にリトライしやすい。
+
+### セットアップ
+
+**DeepL API**
+1. https://www.deepl.com/pro-api で無料/有料プランのAPIキーを取得。
+2. `.env` の `DEEPL_API_KEY` に設定（Freeキーは末尾が `:fx`）。
+
+**Gmail API**
+1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成し、「Gmail API」を有効化。
+2. 「APIとサービス」→「認証情報」で OAuthクライアントID（種類: **デスクトップアプリ**）を作成。
+3. 発行された client id / secret を `.env` の `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` に設定。
+4. `GMAIL_SENDER`（送信元にするGmailアドレス）と `MAIL_TO`（送信先。カンマ区切りで複数可）を設定。
+5. 以下を実行し、表示されたURLをブラウザで開いて送信元にしたいGmailアカウントで認可する。
+
+   ```bash
+   npm run gmail:auth
+   ```
+
+   認可が完了すると `refresh_token` がターミナルに表示されるので、`.env` の `GMAIL_REFRESH_TOKEN` に貼り付ける。
+
+### 実行方法
+
+`npm run check` / `npm run watch` を実行すると、Step 1（新着検知・トランスクリプト取得）に続けて
+Step 2（翻訳・メール送信）まで自動的に走る。
+
+### 既知の注意点
+
+- このサンドボックス環境は `deepl.com` や `googleapis.com` を含む外部ドメインへの送信も制限されているため、
+  DeepL翻訳・Gmail送信の実通信はこの環境からは検証できていません。型チェック (`npx tsc --noEmit`) は通過済みです。
+  実際のAPIキー・OAuth認可情報を設定のうえ、通常のネットワーク環境で動作確認してください。
+- Gmail APIの `gmail.send` スコープは送信専用（受信トレイの閲覧はできない）ため、比較的安全な権限です。
+- `refresh_token` はアクセストークンを無期限に再発行できる機密情報です。`.env` は `.gitignore` 済みですが、
+  取り扱いに注意してください。
+
 ## 今後の予定
 
-- **Step 2**: 取得したトランスクリプトをDeepL API（またはOpenAI API）で日本語に翻訳し、
-  Gmail API / Nodemailer で指定アドレスへメール送信。
 - **Step 3**: `audioUrl` を使い、`<audio loop>` によるリピート再生Webページ（`public/`配下）を作成。

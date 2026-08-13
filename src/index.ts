@@ -4,6 +4,8 @@ import { config } from "./config";
 import { loadState, saveState } from "./state";
 import { fetchEpisodes, findNewEpisodes } from "./rssFeed";
 import { fetchTranscript } from "./scraper";
+import { translateToJapanese } from "./translator";
+import { sendTranscriptEmail } from "./gmail";
 import { EpisodeMeta, EpisodeWithTranscript } from "./types";
 
 function slugify(title: string, pubDate: string): string {
@@ -31,21 +33,44 @@ async function processEpisode(episode: EpisodeMeta): Promise<void> {
   console.log(`  page: ${episode.link}`);
   console.log(`  audio: ${episode.audioUrl}`);
 
+  let withTranscript: EpisodeWithTranscript;
   try {
     const transcript = await fetchTranscript(episode.link);
-    const withTranscript: EpisodeWithTranscript = {
+    withTranscript = {
       ...episode,
       transcript,
       transcriptFetchedAt: new Date().toISOString(),
     };
-    const filePath = saveTranscript(withTranscript);
-    console.log(
-      `  transcript saved (${transcript.length} chars) -> ${filePath}`
-    );
+    saveTranscript(withTranscript);
+    console.log(`  transcript fetched (${transcript.length} chars)`);
   } catch (err) {
-    console.error(
-      `  failed to fetch transcript: ${(err as Error).message}`
+    console.error(`  failed to fetch transcript: ${(err as Error).message}`);
+    return;
+  }
+
+  try {
+    const translatedTranscript = await translateToJapanese(
+      withTranscript.transcript
     );
+    withTranscript = {
+      ...withTranscript,
+      translatedTranscript,
+      translatedAt: new Date().toISOString(),
+    };
+    saveTranscript(withTranscript);
+    console.log(`  translated (${translatedTranscript.length} chars)`);
+  } catch (err) {
+    console.error(`  failed to translate transcript: ${(err as Error).message}`);
+    return;
+  }
+
+  try {
+    await sendTranscriptEmail(withTranscript);
+    withTranscript = { ...withTranscript, emailSentAt: new Date().toISOString() };
+    saveTranscript(withTranscript);
+    console.log(`  email sent to ${config.mailTo}`);
+  } catch (err) {
+    console.error(`  failed to send email: ${(err as Error).message}`);
   }
 }
 

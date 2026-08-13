@@ -8,12 +8,14 @@
     "build": "tsc -p tsconfig.json",
     "check": "ts-node src/index.ts",
     "watch": "ts-node src/index.ts --watch",
-    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts"
+    "dev": "nodemon --watch src --ext ts --exec ts-node src/index.ts",
+    "gmail:auth": "ts-node src/getGmailRefreshToken.ts"
   },
   "dependencies": {
     "axios": "^1.7.7",
     "cheerio": "^1.0.0",
     "dotenv": "^16.4.5",
+    "googleapis": "^174.0.1",
     "rss-parser": "^3.13.0"
   },
   "devDependencies": {
